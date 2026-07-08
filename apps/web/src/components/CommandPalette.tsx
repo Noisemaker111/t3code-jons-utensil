@@ -312,6 +312,13 @@ function buildAddProjectRemoteSourceReadiness(
       readiness[source] = { ready: false, hint: provider.installHint };
       continue;
     }
+    if (provider.auth.status === "outdated") {
+      readiness[source] = {
+        ready: false,
+        hint: `${provider.label} CLI is outdated and can't confirm sign-in. Open Settings -> Source Control to update it.`,
+      };
+      continue;
+    }
     if (provider.auth.status === "unauthenticated") {
       readiness[source] = {
         ready: false,

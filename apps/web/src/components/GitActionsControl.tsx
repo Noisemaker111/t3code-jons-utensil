@@ -225,6 +225,12 @@ function getPublishProviderReadiness(input: {
   if (discovered.status !== "available") {
     return { ready: false, hint: discovered.installHint };
   }
+  if (discovered.auth.status === "outdated") {
+    return {
+      ready: false,
+      hint: `${discovered.label} CLI is outdated and can't confirm sign-in. Open Settings -> Source Control to update it.`,
+    };
+  }
   if (discovered.auth.status === "unauthenticated") {
     return {
       ready: false,
