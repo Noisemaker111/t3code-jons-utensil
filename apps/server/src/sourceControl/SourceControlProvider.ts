@@ -111,6 +111,12 @@ export class SourceControlProvider extends Context.Service<
       readonly context?: SourceControlProviderContext;
       readonly repository: string;
     }) => Effect.Effect<SourceControlRepositoryCloneUrls, SourceControlProviderError>;
+    readonly listRepositories?: (input: {
+      readonly cwd: string;
+    }) => Effect.Effect<
+      ReadonlyArray<SourceControlRepositoryCloneUrls>,
+      SourceControlProviderError
+    >;
     readonly createRepository: (input: {
       readonly cwd: string;
       readonly repository: string;

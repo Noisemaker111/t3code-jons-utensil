@@ -557,6 +557,14 @@ function OpenCommandPaletteDialog(props: {
           input: {},
         }),
   );
+  const githubRepositories = useEnvironmentQuery(
+    browseEnvironmentId === null || addProjectCloneFlow?.source !== "github"
+      ? null
+      : sourceControlEnvironment.repositories({
+          environmentId: browseEnvironmentId,
+          input: { provider: "github" },
+        }),
+  );
   const browseEnvironmentPlatform = getEnvironmentBrowsePlatform(
     browseEnvironment?.serverConfig?.environment.platform.os,
   );
@@ -1805,6 +1813,31 @@ function OpenCommandPaletteDialog(props: {
                     {remoteProjectContext.description}
                   </span>
                 </span>
+              </div>
+            </div>
+          ) : null}
+          {addProjectCloneFlow?.step === "repository" &&
+          addProjectCloneFlow.source === "github" &&
+          githubRepositories.data ? (
+            <div className="p-2 pb-0">
+              <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+                Your GitHub repositories
+              </div>
+              <div className="grid max-h-48 gap-0.5 overflow-y-auto">
+                {githubRepositories.data
+                  .filter((repository) =>
+                    repository.nameWithOwner.toLowerCase().includes(deferredQuery.toLowerCase()),
+                  )
+                  .map((repository) => (
+                    <button
+                      className="truncate rounded-sm px-2 py-1.5 text-start text-sm hover:bg-muted"
+                      key={repository.nameWithOwner}
+                      type="button"
+                      onClick={() => setQuery(repository.nameWithOwner)}
+                    >
+                      {repository.nameWithOwner}
+                    </button>
+                  ))}
               </div>
             </div>
           ) : null}

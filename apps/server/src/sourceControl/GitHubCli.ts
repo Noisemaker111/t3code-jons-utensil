@@ -220,6 +220,9 @@ export class GitHubCli extends Context.Service<
       readonly cwd: string;
       readonly repository: string;
     }) => Effect.Effect<GitHubRepositoryCloneUrls, GitHubCliError>;
+    readonly listRepositories?: (input: {
+      readonly cwd: string;
+    }) => Effect.Effect<ReadonlyArray<GitHubRepositoryCloneUrls>, GitHubCliError>;
 
     readonly createRepository: (input: {
       readonly cwd: string;
@@ -409,6 +412,19 @@ export const make = Effect.gen(function* () {
           ),
         ),
         Effect.map(normalizeRepositoryCloneUrls),
+      ),
+    listRepositories: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: ["repo", "list", "--limit", "100", "--json", "nameWithOwner,url,sshUrl"],
+      }).pipe(
+        Effect.map(
+          (result) => JSON.parse(result.stdout) as ReadonlyArray<GitHubRepositoryCloneUrls>,
+        ),
+        Effect.catch((cause) =>
+          Effect.fail(new GitHubRepositoryDecodeError({ command: "gh", cwd: input.cwd, cause })),
+        ),
+        Effect.map((items) => items.map(normalizeRepositoryCloneUrls)),
       ),
     createRepository: (input) =>
       execute({

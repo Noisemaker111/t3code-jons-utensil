@@ -17,6 +17,7 @@ import {
   type SourceControlRepositoryCloneUrls,
   type SourceControlRepositoryInfo,
   type SourceControlRepositoryLookupInput,
+  type SourceControlRepositoryListInput,
 } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
@@ -30,6 +31,9 @@ export class SourceControlRepositoryService extends Context.Service<
     readonly lookupRepository: (
       input: SourceControlRepositoryLookupInput,
     ) => Effect.Effect<SourceControlRepositoryInfo, SourceControlRepositoryError>;
+    readonly listRepositories: (
+      input: SourceControlRepositoryListInput,
+    ) => Effect.Effect<ReadonlyArray<SourceControlRepositoryInfo>, SourceControlRepositoryError>;
     readonly cloneRepository: (
       input: SourceControlCloneRepositoryInput,
     ) => Effect.Effect<SourceControlCloneRepositoryResult, SourceControlRepositoryError>;
@@ -124,6 +128,31 @@ export const make = Effect.gen(function* () {
       repository: input.repository.trim(),
     });
     return toRepositoryInfo(providerKind, urls);
+  });
+  const listRepositories = Effect.fn("SourceControlRepositoryService.listRepositories")(function* (
+    input: SourceControlRepositoryListInput,
+  ) {
+    const providerKind = yield* ensureConcreteProvider({
+      operation: "listRepositories",
+      provider: input.provider,
+    });
+    const provider = yield* providers.get(providerKind);
+    if (providerKind !== "github") {
+      return yield* new SourceControlRepositoryError({
+        operation: "listRepositories",
+        provider: providerKind,
+        detail: "Repository listing is currently supported for GitHub only.",
+      });
+    }
+    if (!provider.listRepositories) {
+      return yield* new SourceControlRepositoryError({
+        operation: "listRepositories",
+        provider: providerKind,
+        detail: "Repository listing is not supported by this provider.",
+      });
+    }
+    const urls = yield* provider.listRepositories({ cwd: input.cwd ?? config.cwd });
+    return urls.map((item) => toRepositoryInfo(providerKind, item));
   });
 
   const normalizeDestinationPath = Effect.fn("SourceControlRepositoryService.normalizeDestination")(
@@ -278,6 +307,8 @@ export const make = Effect.gen(function* () {
   return SourceControlRepositoryService.of({
     lookupRepository: (input) =>
       lookupRepository(input).pipe(mapRepositoryError("lookupRepository", input.provider)),
+    listRepositories: (input) =>
+      listRepositories(input).pipe(mapRepositoryError("listRepositories", input.provider)),
     cloneRepository: (input) =>
       cloneRepository(input).pipe(
         mapRepositoryError("cloneRepository", input.provider ?? "unknown"),
