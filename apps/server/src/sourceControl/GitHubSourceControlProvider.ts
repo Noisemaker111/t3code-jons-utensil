@@ -247,6 +247,24 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
+    ...(github.listRepositories
+      ? {
+          listRepositories: (input: { readonly cwd: string }) =>
+            github.listRepositories!(input).pipe(
+              Effect.mapError(
+                (error) =>
+                  new SourceControlProviderError({
+                    provider: "github",
+                    operation: "listRepositories",
+                    command: error.command,
+                    cwd: input.cwd,
+                    detail: error.detail,
+                    cause: error,
+                  }),
+              ),
+            ),
+        }
+      : {}),
     createRepository: (input) =>
       github.createRepository(input).pipe(
         Effect.mapError(

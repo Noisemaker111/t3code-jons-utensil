@@ -57,6 +57,12 @@ export const SourceControlRepositoryInfo = Schema.Struct({
 });
 export type SourceControlRepositoryInfo = typeof SourceControlRepositoryInfo.Type;
 
+export const SourceControlRepositoryListInput = Schema.Struct({
+  provider: SourceControlProviderKind,
+  cwd: Schema.optional(TrimmedNonEmptyString),
+});
+export type SourceControlRepositoryListInput = typeof SourceControlRepositoryListInput.Type;
+
 export const SourceControlRepositoryLookupInput = Schema.Struct({
   provider: SourceControlProviderKind,
   repository: TrimmedNonEmptyString,
