@@ -1,7 +1,9 @@
+// @effect-diagnostics globalFetch:off globalDate:off globalDateInEffect:off - Cloudflare JWKS verification uses the platform Web Crypto and fetch APIs.
 import {
   AuthAccessTokenType,
   AuthAccessWriteScope,
   AuthAdministrativeScopes,
+  AuthSessionId,
   AuthStandardClientScopes,
   type AuthAccessTokenResult,
   type AuthBrowserSessionResult,
@@ -11,7 +13,6 @@ import {
   type AuthEnvironmentScope,
   type AuthPairingLink,
   type AuthPairingCredentialResult,
-  type AuthSessionId,
   type AuthSessionState,
   type ServerAuthDescriptor,
   type ServerAuthSessionMethod,
@@ -501,8 +502,34 @@ const DPOP_AUTHORIZATION_PREFIX = "DPoP ";
 const WEBSOCKET_TICKET_QUERY_PARAM = "wsTicket";
 const CLOUDFLARE_ASSERTION_HEADER = "cf-access-jwt-assertion";
 
-type CloudflareClaims = { readonly sub?: unknown; readonly email?: unknown; readonly aud?: unknown };
-let cloudflareJwks: { readonly expiresAt: number; readonly keys: ReadonlyArray<JsonWebKey> } | undefined;
+type CloudflareClaims = {
+  readonly sub?: unknown;
+  readonly email?: unknown;
+  readonly aud?: unknown;
+};
+type CloudflareIdentity = {
+  readonly sessionId: AuthSessionId;
+  readonly subject: string;
+  readonly expiresAt: DateTime.Utc;
+};
+type CloudflareJwk = Record<string, unknown> & { readonly kid?: string };
+type CloudflareJwks = { readonly expiresAt: number; readonly keys: ReadonlyArray<CloudflareJwk> };
+const cloudflareJwks = new Map<string, CloudflareJwks>();
+
+const fetchCloudflareJwks = async (issuer: string): Promise<CloudflareJwks | null> => {
+  const response = await fetch(`${issuer}/cdn-cgi/access/certs`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) return null;
+  const body = (await response.json()) as { keys?: unknown };
+  if (!Array.isArray(body.keys) || body.keys.length > 20) return null;
+  const result = {
+    expiresAt: Date.now() + 3600000,
+    keys: body.keys as ReadonlyArray<CloudflareJwk>,
+  };
+  cloudflareJwks.set(issuer, result);
+  return result;
+};
 
 const verifyCloudflareAssertion = (token: string) =>
   Effect.tryPromise({
@@ -514,29 +541,57 @@ const verifyCloudflareAssertion = (token: string) =>
       const issuer = `https://${teamDomain}`;
       const parts = token.split(".");
       if (parts.length !== 3) return null;
-      const decode = (value: string) => JSON.parse(Buffer.from(value, "base64url").toString()) as Record<string, unknown>;
+      const decode = (value: string) =>
+        JSON.parse(Buffer.from(value, "base64url").toString()) as Record<string, unknown>;
       const header = decode(parts[0]!);
       if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
       const now = Math.floor(Date.now() / 1000);
       const payload = decode(parts[1]!) as CloudflareClaims & Record<string, unknown>;
-      if (payload.iss !== issuer || payload.email !== allowedEmail ||
-          !((typeof payload.aud === "string" && payload.aud === audience) ||
-            (Array.isArray(payload.aud) && payload.aud.includes(audience))) ||
-          typeof payload.sub !== "string" || typeof payload.exp !== "number" || payload.exp <= now ||
-          (typeof payload.nbf === "number" && payload.nbf > now)) return null;
-      if (!cloudflareJwks || cloudflareJwks.expiresAt <= Date.now()) {
-        const response = await fetch(`${issuer}/cdn-cgi/access/certs`);
-        if (!response.ok) return null;
-        const body = (await response.json()) as { keys?: ReadonlyArray<JsonWebKey & { kid?: string }> };
-        cloudflareJwks = { expiresAt: Date.now() + 3600000, keys: body.keys ?? [] };
+      if (
+        payload.iss !== issuer ||
+        typeof payload.email !== "string" ||
+        payload.email.toLowerCase() !== allowedEmail ||
+        !(
+          (typeof payload.aud === "string" && payload.aud === audience) ||
+          (Array.isArray(payload.aud) && payload.aud.includes(audience))
+        ) ||
+        typeof payload.sub !== "string" ||
+        typeof payload.exp !== "number" ||
+        payload.exp <= now ||
+        (typeof payload.nbf === "number" && payload.nbf > now)
+      )
+        return null;
+      let jwks = cloudflareJwks.get(issuer);
+      if (!jwks || jwks.expiresAt <= Date.now())
+        jwks = (await fetchCloudflareJwks(issuer)) ?? undefined;
+      let jwk = jwks?.keys.find((key) => key.kid === header.kid);
+      if (!jwk) {
+        jwks = (await fetchCloudflareJwks(issuer)) ?? undefined;
+        jwk = jwks?.keys.find((key) => key.kid === header.kid);
       }
-      const jwk = cloudflareJwks.keys.find((key) => key.kid === header.kid);
       if (!jwk) return null;
-      const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-      const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, Buffer.from(parts[2]!, "base64url"), Buffer.from(`${parts[0]}.${parts[1]}`));
-      return valid ? { subject: payload.email as string } : null;
+      const key = await crypto.subtle.importKey(
+        "jwk",
+        jwk as never,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+      const valid = await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        Buffer.from(parts[2]!, "base64url"),
+        Buffer.from(`${parts[0]}.${parts[1]}`),
+      );
+      return valid
+        ? ({
+            sessionId: AuthSessionId.make(`cloudflare:${payload.sub}`),
+            subject: payload.email.toLowerCase(),
+            expiresAt: DateTime.makeUnsafe(payload.exp * 1000),
+          } satisfies CloudflareIdentity)
+        : null;
     },
-    catch: (cause) => cause,
+    catch: (cause) => new ServerAuthInvalidCredentialError({ cause }),
   });
 
 const bySessionPriority = (left: AuthClientSession, right: AuthClientSession) => {
@@ -636,21 +691,26 @@ export const make = Effect.gen(function* () {
     const cloudflareAssertion = request.headers[CLOUDFLARE_ASSERTION_HEADER];
     if (typeof cloudflareAssertion === "string") {
       return verifyCloudflareAssertion(cloudflareAssertion).pipe(
-        Effect.flatMap((identity) => identity
-          ? sessions.issue({
-              method: "bearer-access-token",
-              subject: identity.subject,
-              scopes: AuthStandardClientScopes,
-              client: { label: "Cloudflare Access", deviceType: "browser" },
-            }).pipe(Effect.map((session) => ({
-              sessionId: session.sessionId,
-              subject: session.subject,
-              method: session.method,
-              scopes: session.scopes,
-              expiresAt: session.expiresAt,
-            })), Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })))
-          : Effect.fail(new ServerAuthInvalidCredentialError({ diagnostic: "Invalid Cloudflare Access assertion." }))),
-        Effect.mapError((error) => error instanceof ServerAuthInvalidCredentialError ? error : new ServerAuthInvalidCredentialError({ cause: error })),
+        Effect.flatMap((identity) =>
+          identity
+            ? Effect.succeed({
+                sessionId: identity.sessionId,
+                subject: identity.subject,
+                method: "bearer-access-token" as const,
+                scopes: AuthStandardClientScopes,
+                expiresAt: identity.expiresAt,
+              })
+            : Effect.fail(
+                new ServerAuthInvalidCredentialError({
+                  diagnostic: "Invalid Cloudflare Access assertion.",
+                }),
+              ),
+        ),
+        Effect.mapError((error) =>
+          isServerAuthCredentialError(error)
+            ? error
+            : new ServerAuthInvalidCredentialError({ cause: error }),
+        ),
       );
     }
     const credential = cookieToken ?? bearerToken ?? dpopToken;
@@ -994,6 +1054,14 @@ export const make = Effect.gen(function* () {
 
   const authenticateWebSocketUpgrade: EnvironmentAuth["Service"]["authenticateWebSocketUpgrade"] =
     Effect.fn("EnvironmentAuth.authenticateWebSocketUpgrade")(function* (request) {
+      if (typeof request.headers[CLOUDFLARE_ASSERTION_HEADER] === "string") {
+        const expectedOrigin = process.env.T3CODE_CLOUDFLARE_ACCESS_ORIGIN?.trim();
+        if (!expectedOrigin || request.headers["origin"] !== expectedOrigin) {
+          return yield* new ServerAuthInvalidCredentialError({
+            diagnostic: "Invalid Cloudflare Access WebSocket origin.",
+          });
+        }
+      }
       const requestUrl = HttpServerRequest.toURL(request);
       if (Option.isSome(requestUrl)) {
         const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);

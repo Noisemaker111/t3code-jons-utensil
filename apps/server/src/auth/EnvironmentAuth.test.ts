@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAdministrativeScopes } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -47,6 +48,37 @@ const requestMetadata = {
   os: "macOS",
   browser: "Chrome",
   ipAddress: "192.168.1.23",
+};
+
+const makeCloudflareAssertion = () => {
+  const issuer = "https://test.cloudflareaccess.com";
+  const audience = "test-audience";
+  const email = "user@example.com";
+  const { privateKey, publicKey } = NodeCrypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: "test-key" })).toString(
+    "base64url",
+  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: issuer,
+      aud: audience,
+      email: email.toUpperCase(),
+      sub: "test-user",
+      exp: 4_102_444_800,
+    }),
+  ).toString("base64url");
+  const signature = NodeCrypto.sign(
+    "RSA-SHA256",
+    Buffer.from(`${header}.${payload}`),
+    privateKey,
+  ).toString("base64url");
+  return {
+    audience,
+    email,
+    issuer,
+    jwk: { ...publicKey.export({ format: "jwk" }), kid: "test-key" },
+    token: `${header}.${payload}.${signature}`,
+  };
 };
 
 it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
@@ -99,6 +131,79 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       expect(verified.subject).toBe("one-time-token");
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
+
+  it.effect("authenticates Cloudflare Access without creating durable T3 sessions", () => {
+    const assertion = makeCloudflareAssertion();
+    return Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const originalFetch = globalThis.fetch;
+        const originalEnv = {
+          teamDomain: process.env.T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
+          audience: process.env.T3CODE_CLOUDFLARE_ACCESS_AUDIENCE,
+          email: process.env.T3CODE_CLOUDFLARE_ACCESS_EMAIL,
+          origin: process.env.T3CODE_CLOUDFLARE_ACCESS_ORIGIN,
+        };
+        process.env.T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN = new URL(assertion.issuer).host;
+        process.env.T3CODE_CLOUDFLARE_ACCESS_AUDIENCE = assertion.audience;
+        process.env.T3CODE_CLOUDFLARE_ACCESS_EMAIL = assertion.email;
+        process.env.T3CODE_CLOUDFLARE_ACCESS_ORIGIN = "https://code.example.com";
+        globalThis.fetch = (() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ keys: [assertion.jwk] })),
+          )) as unknown as typeof fetch;
+        return { originalEnv, originalFetch };
+      }),
+      () =>
+        Effect.gen(function* () {
+          const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+          const request = {
+            cookies: {},
+            headers: { "cf-access-jwt-assertion": assertion.token },
+          } as unknown as Parameters<
+            EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
+          >[0];
+
+          const first = yield* serverAuth.authenticateHttpRequest(request);
+          const second = yield* serverAuth.authenticateHttpRequest(request);
+          const sessions = yield* serverAuth.listClientSessions(first.sessionId);
+
+          expect(first.sessionId).toBe("cloudflare:test-user");
+          expect(second.sessionId).toBe(first.sessionId);
+          expect(first.subject).toBe(assertion.email);
+          expect(first.scopes).toEqual([
+            "orchestration:read",
+            "orchestration:operate",
+            "terminal:operate",
+            "review:write",
+            "relay:read",
+          ]);
+          expect(sessions).toHaveLength(0);
+
+          const websocketError = yield* serverAuth
+            .authenticateWebSocketUpgrade({
+              ...request,
+              headers: {
+                ...request.headers,
+                origin: "https://attacker.example.com",
+              },
+            })
+            .pipe(Effect.flip);
+          expect(websocketError._tag).toBe("ServerAuthInvalidCredentialError");
+        }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+      ({ originalEnv, originalFetch }) =>
+        Effect.sync(() => {
+          globalThis.fetch = originalFetch;
+          const restore = (name: string, value: string | undefined) => {
+            if (value === undefined) delete process.env[name];
+            else process.env[name] = value;
+          };
+          restore("T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN", originalEnv.teamDomain);
+          restore("T3CODE_CLOUDFLARE_ACCESS_AUDIENCE", originalEnv.audience);
+          restore("T3CODE_CLOUDFLARE_ACCESS_EMAIL", originalEnv.email);
+          restore("T3CODE_CLOUDFLARE_ACCESS_ORIGIN", originalEnv.origin);
+        }),
+    );
+  });
 
   it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
     Effect.gen(function* () {
