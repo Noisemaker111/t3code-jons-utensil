@@ -13,6 +13,7 @@ import {
   DesktopSshBearerRequestInputSchema,
   DesktopSshEnvironmentEnsureInputSchema,
   DesktopSshEnvironmentEnsureResultSchema,
+  DesktopSshEnvironmentUpdateResultSchema,
   DesktopSshEnvironmentTargetSchema,
   DesktopSshHttpBaseUrlInputSchema,
   DesktopSshPasswordPromptCancelledType,
@@ -146,6 +147,16 @@ export const disconnectSshEnvironment = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.sshEnvironment.disconnectEnvironment")(function* (target) {
     const sshEnvironment = yield* DesktopSshEnvironment.DesktopSshEnvironment;
     yield* sshEnvironment.disconnectEnvironment(target);
+  }),
+});
+
+export const updateSshEnvironment = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.UPDATE_SSH_ENVIRONMENT_CHANNEL,
+  payload: DesktopSshEnvironmentTargetSchema,
+  result: DesktopSshEnvironmentUpdateResultSchema,
+  handler: Effect.fn("desktop.ipc.sshEnvironment.updateEnvironment")(function* (target) {
+    const sshEnvironment = yield* DesktopSshEnvironment.DesktopSshEnvironment;
+    return yield* sshEnvironment.updateEnvironment(target);
   }),
 });
 

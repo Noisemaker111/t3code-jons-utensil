@@ -18,6 +18,7 @@ import {
   disconnectSshEnvironment,
   discoverSshHosts,
   ensureSshEnvironment,
+  updateSshEnvironment,
   fetchSshEnvironmentDescriptor,
   fetchSshSessionState,
   issueSshWebSocketTicket,
@@ -62,6 +63,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(discoverSshHosts);
   yield* ipc.handle(ensureSshEnvironment);
   yield* ipc.handle(disconnectSshEnvironment);
+  yield* ipc.handle(updateSshEnvironment);
   yield* ipc.handle(fetchSshEnvironmentDescriptor);
   yield* ipc.handle(bootstrapSshBearerSession);
   yield* ipc.handle(fetchSshSessionState);
