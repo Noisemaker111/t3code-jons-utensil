@@ -8,6 +8,7 @@ import {
   Globe2Icon,
   LoaderIcon,
   SearchIcon,
+  RefreshCwIcon,
   SettingsIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -23,6 +24,7 @@ import {
 } from "./ThreadStatusIndicators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
+import * as Option from "effect/Option";
 import { autoAnimate } from "@formkit/auto-animate";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -2877,6 +2879,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter className="p-2">
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
+      <SidebarVpsUpdateButton />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -2890,6 +2893,58 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>
+  );
+});
+
+const SidebarVpsUpdateButton = memo(function SidebarVpsUpdateButton() {
+  const { environments } = useEnvironments();
+  const [updating, setUpdating] = useState(false);
+  const sshEnvironment = environments.find(
+    (environment) =>
+      environment.entry.target._tag === "SshConnectionTarget" &&
+      Option.getOrNull(environment.entry.profile)?._tag === "SshConnectionProfile",
+  );
+
+  if (!isElectron || !sshEnvironment || !window.desktopBridge?.updateSshEnvironment) return null;
+  const profile = Option.getOrNull(sshEnvironment.entry.profile);
+  if (!profile || profile._tag !== "SshConnectionProfile") return null;
+  const target = profile.target;
+
+  return (
+    <SidebarMenu className="mb-1">
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          size="sm"
+          className="gap-2 rounded-lg bg-primary/12 px-2 py-1.5 text-primary hover:bg-primary/20 hover:text-primary"
+          disabled={updating}
+          onClick={() => {
+            setUpdating(true);
+            void window.desktopBridge
+              ?.updateSshEnvironment(target)
+              .then((result) => {
+                toastManager.add({
+                  type: "success",
+                  title: "VPS update started",
+                  description: result.message,
+                });
+              })
+              .catch((error: unknown) => {
+                toastManager.add(
+                  stackedThreadToast({
+                    type: "error",
+                    title: "Could not update VPS",
+                    description: error instanceof Error ? error.message : "SSH update failed.",
+                  }),
+                );
+              })
+              .finally(() => setUpdating(false));
+          }}
+        >
+          <RefreshCwIcon className={cn("size-3.5", updating && "animate-spin")} />
+          <span className="text-xs">{updating ? "Updating VPS…" : "Update VPS"}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 });
 
