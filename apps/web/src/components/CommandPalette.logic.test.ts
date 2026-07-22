@@ -4,11 +4,20 @@ import type { Thread } from "../types";
 import {
   buildThreadActionItems,
   filterCommandPaletteGroups,
+  getDefaultRepositoryClonePath,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
 const LOCAL_ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const PROJECT_ID = ProjectId.make("project-1");
+
+describe("getDefaultRepositoryClonePath", () => {
+  it("appends the repository name to the configured project directory", () => {
+    expect(getDefaultRepositoryClonePath("~/projects/", "Noisemaker111/vps-code")).toBe(
+      "~/projects/vps-code",
+    );
+  });
+});
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {

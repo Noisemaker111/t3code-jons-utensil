@@ -101,6 +101,7 @@ import {
   type CommandPaletteView,
   filterBrowseEntries,
   filterCommandPaletteGroups,
+  getDefaultRepositoryClonePath,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
@@ -1233,6 +1234,84 @@ function OpenCommandPaletteDialog(props: {
     return getAddProjectInitialQueryForEnvironment(environmentId);
   }
 
+  async function cloneRemoteProject(input: {
+    readonly environmentId: EnvironmentId;
+    readonly remoteUrl: string;
+    readonly destinationPath: string;
+  }): Promise<void> {
+    const rawDestination = input.destinationPath.trim();
+    if (rawDestination.length === 0 || isRemoteProjectCloning) {
+      return;
+    }
+
+    if (isUnsupportedWindowsProjectPath(rawDestination, browseEnvironmentPlatform)) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Clone failed",
+          description: "Windows-style paths are only supported on Windows.",
+        }),
+      );
+      return;
+    }
+
+    if (isExplicitRelativeProjectPath(rawDestination) && !currentProjectCwdForBrowse) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Clone failed",
+          description: "Relative paths require an active project.",
+        }),
+      );
+      return;
+    }
+
+    const destinationPath = resolveProjectPathForDispatch(
+      rawDestination,
+      currentProjectCwdForBrowse,
+    );
+    if (destinationPath.length === 0) {
+      return;
+    }
+
+    setIsRemoteProjectCloning(true);
+    const cloneResult = await cloneRepository({
+      environmentId: input.environmentId,
+      input: {
+        remoteUrl: input.remoteUrl,
+        destinationPath,
+      },
+    });
+    setIsRemoteProjectCloning(false);
+    if (cloneResult._tag === "Failure") {
+      if (!isAtomCommandInterrupted(cloneResult)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Clone failed",
+            description: errorMessage(squashAtomCommandFailure(cloneResult)),
+          }),
+        );
+      }
+      return;
+    }
+    await handleAddProject(cloneResult.value.cwd);
+  }
+
+  async function cloneListedGitHubRepository(
+    repository: SourceControlRepositoryInfo,
+  ): Promise<void> {
+    if (addProjectCloneFlow?.step !== "repository" || isRemoteProjectCloning) {
+      return;
+    }
+    const parentPath = getDefaultCloneParentPath(addProjectCloneFlow.environmentId);
+    await cloneRemoteProject({
+      environmentId: addProjectCloneFlow.environmentId,
+      remoteUrl: repository.url,
+      destinationPath: getDefaultRepositoryClonePath(parentPath, repository.nameWithOwner),
+    });
+  }
+
   async function submitAddProjectCloneFlow(destinationPathInput?: string): Promise<void> {
     if (!addProjectCloneFlow) {
       return;
@@ -1290,7 +1369,7 @@ function OpenCommandPaletteDialog(props: {
         source: addProjectCloneFlow.source,
         repositoryInput: rawRepository,
         repository,
-        remoteUrl: repository.sshUrl,
+        remoteUrl: provider === "github" ? repository.url : repository.sshUrl,
       });
       setHighlightedItemValue(null);
       setQuery(destinationPath);
@@ -1298,63 +1377,11 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
 
-    const rawDestination = (destinationPathInput ?? query).trim();
-    if (rawDestination.length === 0 || isRemoteProjectCloning) {
-      return;
-    }
-
-    if (isUnsupportedWindowsProjectPath(rawDestination, browseEnvironmentPlatform)) {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Clone failed",
-          description: "Windows-style paths are only supported on Windows.",
-        }),
-      );
-      return;
-    }
-
-    if (isExplicitRelativeProjectPath(rawDestination) && !currentProjectCwdForBrowse) {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Clone failed",
-          description: "Relative paths require an active project.",
-        }),
-      );
-      return;
-    }
-
-    const destinationPath = resolveProjectPathForDispatch(
-      rawDestination,
-      currentProjectCwdForBrowse,
-    );
-    if (destinationPath.length === 0) {
-      return;
-    }
-
-    setIsRemoteProjectCloning(true);
-    const cloneResult = await cloneRepository({
+    await cloneRemoteProject({
       environmentId: addProjectCloneFlow.environmentId,
-      input: {
-        remoteUrl: addProjectCloneFlow.remoteUrl,
-        destinationPath,
-      },
+      remoteUrl: addProjectCloneFlow.remoteUrl,
+      destinationPath: destinationPathInput ?? query,
     });
-    setIsRemoteProjectCloning(false);
-    if (cloneResult._tag === "Failure") {
-      if (!isAtomCommandInterrupted(cloneResult)) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Clone failed",
-            description: errorMessage(squashAtomCommandFailure(cloneResult)),
-          }),
-        );
-      }
-      return;
-    }
-    await handleAddProject(cloneResult.value.cwd);
   }
 
   function browseTo(name: string): void {
@@ -1831,9 +1858,10 @@ function OpenCommandPaletteDialog(props: {
                   .map((repository) => (
                     <button
                       className="truncate rounded-sm px-2 py-1.5 text-start text-sm hover:bg-muted"
+                      disabled={isRemoteProjectCloning}
                       key={repository.nameWithOwner}
                       type="button"
-                      onClick={() => setQuery(repository.nameWithOwner)}
+                      onClick={() => void cloneListedGitHubRepository(repository)}
                     >
                       {repository.nameWithOwner}
                     </button>
