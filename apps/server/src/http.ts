@@ -276,6 +276,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       return HttpServerResponse.uint8Array(indexData, {
         status: 200,
         contentType: "text/html; charset=utf-8",
+        headers: { "Cache-Control": "no-store" },
       });
     }
 
@@ -288,6 +289,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
     return HttpServerResponse.uint8Array(data, {
       status: 200,
       contentType,
+      ...(contentType === "text/html" ? { headers: { "Cache-Control": "no-store" } } : {}),
     });
   }),
 );
