@@ -82,7 +82,7 @@ describe("desktop update button state", () => {
     expect(resolveDesktopUpdateButtonAction(state)).toBe("install");
   });
 
-  it("hides the button for non-actionable check errors", () => {
+  it("offers a retry for check errors", () => {
     const state: DesktopUpdateState = {
       ...baseState,
       status: "error",
@@ -90,8 +90,13 @@ describe("desktop update button state", () => {
       errorContext: "check",
       canRetry: true,
     };
-    expect(shouldShowDesktopUpdateButton(state)).toBe(false);
-    expect(resolveDesktopUpdateButtonAction(state)).toBe("none");
+    expect(shouldShowDesktopUpdateButton(state)).toBe(true);
+    expect(resolveDesktopUpdateButtonAction(state)).toBe("check");
+  });
+
+  it("offers a check when the app is up to date", () => {
+    expect(resolveDesktopUpdateButtonAction(baseState)).toBe("check");
+    expect(shouldShowDesktopUpdateButton(baseState)).toBe(true);
   });
 
   it("disables the button while downloading", () => {
