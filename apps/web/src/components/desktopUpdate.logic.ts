@@ -1,6 +1,6 @@
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
 
-export type DesktopUpdateButtonAction = "download" | "install" | "none";
+export type DesktopUpdateButtonAction = "check" | "download" | "install" | "none";
 
 export function resolveDesktopUpdateButtonAction(
   state: DesktopUpdateState,
@@ -16,7 +16,7 @@ export function resolveDesktopUpdateButtonAction(
       return "download";
     }
   }
-  return "none";
+  return canCheckForUpdate(state) ? "check" : "none";
 }
 
 export function shouldShowDesktopUpdateButton(state: DesktopUpdateState | null): boolean {
@@ -34,7 +34,7 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
 }
 
 export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
-  return state?.status === "downloading";
+  return state?.status === "checking" || state?.status === "downloading";
 }
 
 export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
@@ -53,6 +53,9 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
 }
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
+  if (state.status === "checking") {
+    return "Checking for updates";
+  }
   if (state.status === "available") {
     return `Update ${state.availableVersion ?? "available"} ready to download`;
   }

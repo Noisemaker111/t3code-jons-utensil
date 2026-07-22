@@ -75,6 +75,20 @@ export function SidebarUpdatePill() {
     if (!bridge || !state) return;
     if (disabled || action === "none") return;
 
+    if (action === "check") {
+      if (typeof bridge.checkForUpdate !== "function") return;
+      void bridge.checkForUpdate().catch((error) => {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not check for updates",
+            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+          }),
+        );
+      });
+      return;
+    }
+
     if (action === "download") {
       void bridge
         .downloadUpdate()
@@ -167,7 +181,12 @@ export function SidebarUpdatePill() {
                   className="update-main relative flex h-full flex-1 items-center gap-2 px-2 enabled:cursor-pointer"
                   onClick={handleAction}
                 >
-                  {action === "install" ? (
+                  {action === "check" || state?.status === "checking" ? (
+                    <>
+                      <RotateCwIcon className="size-3.5" />
+                      <span>Check for updates</span>
+                    </>
+                  ) : action === "install" ? (
                     <>
                       <RotateCwIcon className="size-3.5" />
                       <span>Restart to update</span>
