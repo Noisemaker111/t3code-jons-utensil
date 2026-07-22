@@ -3,6 +3,7 @@ import type { SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { type ReactNode } from "react";
+import { appendBrowsePathSegment } from "../lib/projectPaths";
 import { sortThreads } from "../lib/threadSort";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
@@ -10,6 +11,13 @@ import { type Project, type SidebarThreadSummary, type Thread } from "../types";
 export const RECENT_THREAD_LIMIT = 12;
 export const ITEM_ICON_CLASS = "size-4 text-muted-foreground/80";
 export const ADDON_ICON_CLASS = "size-4";
+
+export function getDefaultRepositoryClonePath(parentPath: string, nameWithOwner: string): string {
+  const directoryName = nameWithOwner.split("/").at(-1)?.trim();
+  return directoryName
+    ? appendBrowsePathSegment(parentPath, directoryName).replace(/[\\/]+$/, "")
+    : parentPath;
+}
 
 export interface CommandPaletteItem {
   readonly kind: "action" | "submenu";
