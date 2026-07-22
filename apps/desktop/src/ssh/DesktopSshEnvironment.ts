@@ -159,7 +159,7 @@ export const make = Effect.gen(function* () {
         ),
     updateEnvironment: (target) =>
       runSshCommand(target, {
-        remoteCommandArgs: ["systemctl", "start", "vps-code-pull.service"],
+        remoteCommandArgs: ["systemctl", "start", "--no-block", "vps-code-pull.service"],
         timeoutMs: 30_000,
       }).pipe(
         Effect.map(() => ({ accepted: true, message: "VPS update started." })),
