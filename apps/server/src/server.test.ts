@@ -4770,6 +4770,35 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("lists source control repositories over websocket rpc", () =>
+    Effect.gen(function* () {
+      const repositories = [
+        {
+          provider: "github" as const,
+          nameWithOwner: "octocat/example",
+          url: "https://github.com/octocat/example",
+          sshUrl: "git@github.com:octocat/example.git",
+        },
+      ];
+      yield* buildAppUnderTest({
+        layers: {
+          sourceControlRepositoryService: {
+            listRepositories: () => Effect.succeed(repositories),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.sourceControlListRepositories]({ provider: "github" }),
+        ),
+      );
+
+      assert.deepEqual(result, repositories);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc shell.openInEditor errors", () =>
     Effect.gen(function* () {
       const externalLauncherError = new ExternalLauncherCommandNotFoundError({
