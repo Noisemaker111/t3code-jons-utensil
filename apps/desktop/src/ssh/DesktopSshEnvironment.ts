@@ -2,6 +2,7 @@ import type {
   DesktopDiscoveredSshHost,
   DesktopSshEnvironmentBootstrap,
   DesktopSshEnvironmentTarget,
+  DesktopSshEnvironmentUpdateResult,
 } from "@t3tools/contracts";
 import * as NetService from "@t3tools/shared/Net";
 import * as SshAuth from "@t3tools/ssh/auth";
@@ -15,6 +16,7 @@ import {
   SshPasswordPromptError,
   SshReadinessError,
 } from "@t3tools/ssh/errors";
+import { runSshCommand } from "@t3tools/ssh/command";
 import * as SshTunnel from "@t3tools/ssh/tunnel";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -61,6 +63,9 @@ export class DesktopSshEnvironment extends Context.Service<
     readonly disconnectEnvironment: (
       target: DesktopSshEnvironmentTarget,
     ) => Effect.Effect<void, DesktopSshEnvironmentOperationError>;
+    readonly updateEnvironment: (
+      target: DesktopSshEnvironmentTarget,
+    ) => Effect.Effect<DesktopSshEnvironmentUpdateResult, DesktopSshEnvironmentOperationError>;
   }
 >()("@t3tools/desktop/ssh/DesktopSshEnvironment") {}
 
@@ -152,6 +157,16 @@ export const make = Effect.gen(function* () {
           Effect.provide(runtimeContext),
           Effect.withSpan("desktop.ssh.disconnectEnvironment"),
         ),
+    updateEnvironment: (target) =>
+      runSshCommand(target, {
+        remoteCommandArgs: ["systemctl", "start", "vps-code-pull.service"],
+        timeoutMs: 30_000,
+      }).pipe(
+        Effect.map(() => ({ accepted: true, message: "VPS update started." })),
+        Effect.provideService(SshAuth.SshPasswordPrompt, passwordPrompt),
+        Effect.provide(runtimeContext),
+        Effect.withSpan("desktop.ssh.updateEnvironment"),
+      ),
   });
 });
 

@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
         ...(options === undefined ? {} : { options }),
       }),
     ),
+  updateSshEnvironment: (target) =>
+    ipcRenderer.invoke(IpcChannels.UPDATE_SSH_ENVIRONMENT_CHANNEL, target),
   disconnectSshEnvironment: (target) =>
     ipcRenderer.invoke(IpcChannels.DISCONNECT_SSH_ENVIRONMENT_CHANNEL, target),
   fetchSshEnvironmentDescriptor: (httpBaseUrl) =>

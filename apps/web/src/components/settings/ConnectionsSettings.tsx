@@ -1340,6 +1340,7 @@ type SavedBackendListRowProps = {
   removingEnvironmentId: EnvironmentId | null;
   onConnect: (environmentId: EnvironmentId) => void;
   onRemove: (environmentId: EnvironmentId) => void;
+  onUpdate: (environment: EnvironmentPresentation) => void;
 };
 
 function SavedBackendListRow({
@@ -1347,6 +1348,7 @@ function SavedBackendListRow({
   removingEnvironmentId,
   onConnect,
   onRemove,
+  onUpdate,
 }: SavedBackendListRowProps) {
   const environmentId = environment.environmentId;
   const connectionState = environment.connection.phase;
@@ -1462,6 +1464,11 @@ function SavedBackendListRow({
             </Tooltip>
           ) : (
             <>
+              {sshTarget ? (
+                <Button size="xs" variant="outline" onClick={() => onUpdate(environment)}>
+                  Update VPS
+                </Button>
+              ) : null}
               {!isConnected ? (
                 <Button
                   size="xs"
@@ -3367,6 +3374,33 @@ export function ConnectionsSettings() {
             removingEnvironmentId={removingSavedEnvironmentId}
             onConnect={handleConnectSavedBackend}
             onRemove={handleRemoveSavedBackend}
+            onUpdate={(environment) => {
+              const target =
+                environment.entry.target._tag === "SshConnectionTarget" &&
+                Option.isSome(environment.entry.profile) &&
+                environment.entry.profile.value._tag === "SshConnectionProfile"
+                  ? environment.entry.profile.value.target
+                  : null;
+              if (!target || !desktopBridge?.updateSshEnvironment) return;
+              void desktopBridge
+                .updateSshEnvironment(target)
+                .then((result) => {
+                  toastManager.add({
+                    type: "success",
+                    title: "VPS update started",
+                    description: result.message,
+                  });
+                })
+                .catch((error: unknown) => {
+                  toastManager.add(
+                    stackedThreadToast({
+                      type: "error",
+                      title: "Could not update VPS",
+                      description: error instanceof Error ? error.message : "SSH update failed.",
+                    }),
+                  );
+                });
+            }}
           />
         ))}
         <CloudRemoteEnvironmentRows
