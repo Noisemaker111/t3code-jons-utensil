@@ -1,6 +1,7 @@
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
 import { CheckIcon, StarIcon } from "lucide-react";
+import { getModelCostLabel } from "./modelCost";
 import {
   getDisplayModelName,
   getTriggerDisplayModelLabel,
@@ -9,7 +10,6 @@ import {
 } from "./providerIconUtils";
 import { ComboboxItem } from "../ui/combobox";
 import { Button } from "../ui/button";
-import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 
@@ -33,7 +33,6 @@ export const ModelListRow = memo(function ModelListRow(props: {
   preferShortName?: boolean;
   useTriggerLabel?: boolean;
   showNewBadge?: boolean;
-  jumpLabel?: string | null;
   disabledReason?: string | null;
   onToggleFavorite: () => void;
 }) {
@@ -87,9 +86,13 @@ export const ModelListRow = memo(function ModelListRow(props: {
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        {props.jumpLabel ? (
-          <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">{props.jumpLabel}</Kbd>
-        ) : null}
+        <span
+          className="min-w-7 text-right font-mono text-[11px] font-semibold tracking-[0.08em] text-emerald-500 dark:text-emerald-400"
+          title="Approximate relative model cost"
+          aria-label={`Approximate relative model cost: ${getModelCostLabel(props.model)}`}
+        >
+          {getModelCostLabel(props.model)}
+        </span>
         <Tooltip>
           <TooltipTrigger
             render={

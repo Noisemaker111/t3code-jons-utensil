@@ -688,6 +688,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThread?.session?.providerInstanceId ??
     activeThreadModelSelection?.instanceId ??
     activeProjectDefaultModelSelection?.instanceId ??
+    settings.defaultModelSelection?.instanceId ??
     null;
   const explicitSelectedInstanceId = selectedProviderByThreadId ?? threadProvider;
 
@@ -730,6 +731,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThread?.session?.providerInstanceId,
       activeThreadModelSelection?.instanceId,
       activeProjectDefaultModelSelection?.instanceId,
+      settings.defaultModelSelection?.instanceId,
     ];
     for (const candidate of candidates) {
       if (!candidate) continue;
@@ -769,6 +771,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   }, [
     activeProjectDefaultModelSelection?.instanceId,
+    settings.defaultModelSelection?.instanceId,
     activeThread?.session?.providerInstanceId,
     activeThreadModelSelection?.instanceId,
     composerDraft.activeProvider,

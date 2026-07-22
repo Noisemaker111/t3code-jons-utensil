@@ -385,6 +385,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
+  const isDefaultModelDirty = !Equal.equals(
+    settings.defaultModelSelection ?? null,
+    DEFAULT_UNIFIED_SETTINGS.defaultModelSelection ?? null,
+  );
 
   const changedSettingLabels = useMemo(
     () => [
@@ -430,9 +434,11 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Delete confirmation"]
         : []),
       ...(isGitWritingModelDirty ? ["Git writing model"] : []),
+      ...(isDefaultModelDirty ? ["Default model"] : []),
     ],
     [
       isGitWritingModelDirty,
+      isDefaultModelDirty,
       settings.autoOpenPlanSidebar,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
@@ -476,6 +482,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
+      defaultModelSelection: DEFAULT_UNIFIED_SETTINGS.defaultModelSelection,
     });
     onRestored?.();
   }, [changedSettingLabels, onRestored, setTheme, updateSettings]);
@@ -501,6 +508,13 @@ export function GeneralSettingsPanel() {
   });
 
   const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
+  const defaultModelSelection = resolveAppModelSelectionState(
+    settings,
+    serverProviders,
+    settings.defaultModelSelection,
+  );
+  const defaultModelInstanceId = defaultModelSelection.instanceId;
+  const defaultModel = defaultModelSelection.model;
   const textGenInstanceId = textGenerationModelSelection.instanceId;
   const textGenModel = textGenerationModelSelection.model;
   const textGenModelOptions = textGenerationModelSelection.options;
@@ -518,9 +532,15 @@ export function GeneralSettingsPanel() {
     textGenInstanceId,
     textGenModel,
   );
+  const defaultModelInstanceEntries = gitModelInstanceEntries;
+  const defaultModelOptionsByInstance = gitModelOptionsByInstance;
   const isGitWritingModelDirty = !Equal.equals(
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
+  );
+  const isDefaultModelDirty = !Equal.equals(
+    settings.defaultModelSelection ?? null,
+    DEFAULT_UNIFIED_SETTINGS.defaultModelSelection ?? null,
   );
 
   return (
@@ -883,6 +903,43 @@ export function GeneralSettingsPanel() {
                 updateSettings({ confirmThreadDelete: Boolean(checked) })
               }
               aria-label="Confirm thread deletion"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Default model"
+          description="Choose the model used for new threads unless a project or thread has its own model."
+          resetAction={
+            isDefaultModelDirty ? (
+              <SettingResetButton
+                label="default model"
+                onClick={() =>
+                  updateSettings({
+                    defaultModelSelection: DEFAULT_UNIFIED_SETTINGS.defaultModelSelection,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ProviderModelPicker
+              activeInstanceId={defaultModelInstanceId}
+              model={defaultModel}
+              lockedProvider={null}
+              instanceEntries={defaultModelInstanceEntries}
+              modelOptionsByInstance={defaultModelOptionsByInstance}
+              triggerVariant="outline"
+              triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
+              onInstanceModelChange={(instanceId, model) => {
+                updateSettings({
+                  defaultModelSelection: resolveAppModelSelectionState(
+                    settings,
+                    serverProviders,
+                    createModelSelection(instanceId, model),
+                  ),
+                });
+              }}
             />
           }
         />

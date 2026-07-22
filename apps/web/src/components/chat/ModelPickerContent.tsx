@@ -17,7 +17,6 @@ import {
   modelPickerJumpCommandForIndex,
   modelPickerJumpIndexFromCommand,
   resolveShortcutCommand,
-  shortcutLabelForCommand,
 } from "../../keybindings";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -40,8 +39,6 @@ type ModelPickerItem = {
   instanceAccentColor?: string | undefined;
   continuationGroupKey?: string | undefined;
 };
-
-const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 
 // Split a `${instanceId}:${slug}` combobox key back into its pieces. Slugs
 // can contain colons (e.g. some vendor model ids), so we only split on the
@@ -454,24 +451,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }) as const,
     [props.terminalOpen],
   );
-  const modelJumpLabelByKey = useMemo((): ReadonlyMap<string, string> => {
-    if (modelJumpCommandByKey.size === 0) {
-      return EMPTY_MODEL_JUMP_LABELS;
-    }
-    const shortcutLabelOptions = {
-      platform: navigator.platform,
-      context: modelJumpShortcutContext,
-    };
-    const mapping = new Map<string, string>();
-    for (const [modelKey, command] of modelJumpCommandByKey) {
-      const label = shortcutLabelForCommand(keybindings, command, shortcutLabelOptions);
-      if (label) {
-        mapping.set(modelKey, label);
-      }
-    }
-    return mapping.size > 0 ? mapping : EMPTY_MODEL_JUMP_LABELS;
-  }, [keybindings, modelJumpCommandByKey, modelJumpShortcutContext]);
-
   useEffect(() => {
     const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) {
@@ -647,7 +626,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         preferShortName={!isLocked}
                         useTriggerLabel={false}
                         showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
-                        jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
                         disabledReason={disabledReason}
                         onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
                       />
